@@ -1,8 +1,7 @@
 """
 A class to build observations for agents.
 """
-import collections
-from typing import Optional, List, Dict, Tuple, NamedTuple
+from typing import Optional, List
 
 import numpy as np
 
@@ -15,6 +14,7 @@ from flatland.envs.agent_utils import RailAgentStatus
 from utils.types import CardinalNode
 
 
+# Observation Idea from GitHub Rainbow Repo
 class RailObsForRailEnv(ObservationBuilder):
 	"""
 	This class returns an observation of rails occupancy in time in a bitmap.
@@ -38,16 +38,15 @@ class RailObsForRailEnv(ObservationBuilder):
 		self.predictor = predictor
 		
 		self.num_agents = None
-		self.num_rails = None # Depends on the map, must be computed in reset()
+		self.num_rails = None 				# Depends on the map, must be computed in reset()
 		self.max_time_steps = self.predictor.max_depth
 
-		# Not all of them are necessary
-		self.cell_to_id_node = {} # Map cell position : id_node
-		self.id_node_to_cell = {} # Map id_node to cell position
-		self.info = {} # Map id_edge : tuple (CardinalNode1, CardinalNode2, edge_length)
-		self.id_edge_to_cells = {} # Map id_edge : list of tuples (cell pos, crossing dir) in rail (nodes are not counted)
-		self.nodes = set() # Set of node ids
-		self.edges = set() # Set of edge ids
+		self.cell_to_id_node = {} 			# Map cell position : id_node
+		self.id_node_to_cell = {} 			# Map id_node to cell position
+		self.info = {} 						# Map id_edge : tuple (CardinalNode1, CardinalNode2, edge_length)
+		self.id_edge_to_cells = {} 			# Map id_edge : list of tuples (cell pos, crossing dir) in rail (nodes are not counted)
+		self.nodes = set() 					# Set of node ids
+		self.edges = set() 					# Set of edge ids
 
 		self.recompute_bitmap = True
 
@@ -125,7 +124,7 @@ class RailObsForRailEnv(ObservationBuilder):
 			else:
 				# Get action
 				step = self.paths[handle][0]
-				next_action_element = step.next_action_element.action  # Get next_action_element
+				next_action_element = step.next_action_element.action  		# Get next_action_element
 
 				# Just to use the correct form/name
 				if next_action_element == 1:
@@ -152,8 +151,8 @@ class RailObsForRailEnv(ObservationBuilder):
 				before_switch = curr_rail != -1 and next_rail == -1
 			else:
 				# This shouldn't happen, but it may happen
-				print('[WARN] agent\'s {} path run out'.format(a))
-				# Force path recalc
+				print('[WARNING] agent\'s {} path run out'.format(a))
+				# Force path recalculation
 				before_switch = True
 
 		return before_switch

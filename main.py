@@ -1,7 +1,5 @@
-import sys
 import numpy as np
 import torch
-from pathlib import Path
 import os
 from collections import deque
 import datetime
@@ -15,9 +13,6 @@ from flatland.utils.rendertools import RenderTool, AgentRenderVariant
 from flatland.envs.rail_env import RailEnvActions
 from flatland.envs.agent_utils import RailAgentStatus
 
-base_dir = Path(__file__).resolve().parent.parent
-sys.path.append(str(base_dir))
-
 # Model Imports
 from observations import RailObsForRailEnv
 from predictions import ShortestPathPredictorForRailEnv
@@ -28,6 +23,7 @@ from parser import res_parse, debug_parse
 
 
 MAX_STEPS = 200
+MAX_RAILS = 100
 
 
 class AttrDict(dict):
@@ -103,21 +99,12 @@ def main(args):
     else:
         env, obs_builder = rail_setup(args)
 
-    # TODO Must be a parameter of the env (estimated)
-    max_rails = 100
-    # max_steps = env.compute_max_episode_steps(env.width, env.height)
-
-    preprocessor = ObsPreprocessor(max_rails, args.reorder_rails)
+    preprocessor = ObsPreprocessor(MAX_RAILS, args.reorder_rails)
 
     # Setting up the agent
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    dqn = DQNAgent(args, bitmap_height=max_rails * 3, action_space=2, device=device)
+    dqn = DQNAgent(args, bitmap_height=MAX_RAILS * 3, action_space=2, device=device)
 
-    if args.load_model:
-        file = os.path.isfile(args.load_model)
-        if file:
-            dqn.qnetwork_local.load_state_dict(torch.load(args.load_model))
-            print("Model successfully loaded from: {model_location}".format(model_location=str(args.load_model)))
 
     # Initialise Values
     epsilon = args.start_eps
@@ -167,8 +154,6 @@ def main(args):
 
                 # AGENT : ARRIVED
                 if agent.status == RailAgentStatus.DONE or agent.status == RailAgentStatus.DONE_REMOVED:
-                    # TODO if agent !removed you should leave a bit in the bitmap
-                    # TODO? set bitmap only the first time
                     maps[a, :, :] = 0
                     network_action = 0
                     action = RailEnvActions.DO_NOTHING
@@ -228,7 +213,7 @@ def main(args):
                         curr_obs[a] = altobs[best_i].copy()
 
                     else:
-                        print('[ERROR] NO ALTHPATHS EP: {} STEP: {} AGENT: {}'.format(trial_no, step, a))
+                        print('[ERROR] No possible altpaths episode: {} timestep: {} agent: {}'.format(trial_no, step, a))
                         network_action = 0
 
                     if network_action == 0:
@@ -270,7 +255,9 @@ def main(args):
             _, reward, done, info = env.step(railenv_action_dict)
 
             if args.render:
-                env_renderer.render_env(show=True, show_observations=False, show_predictions=True)
+                env_renderer.render_env(show=False, show_observations=False, show_predictions=True)
+                env_renderer.gl.save_image('tmp/frames/flatland_frame_{:04d}.png'.format(step))
+                print("Saving render to: tmp/frames/flatland_frame_{:04d}.png".format(step))
 
             # If debugging
             if args.debug:
@@ -324,8 +311,8 @@ def main(args):
         # End of trial
         epsilon = max(args.end_eps, args.eps_decay * epsilon)  # Decrease epsilon
         epsilons.append(epsilon)
-        # Metrics
 
+        # Metrics
         # Recording done agents
         num_agents_done = 0
         for a in range(env.get_num_agents()):
@@ -363,18 +350,34 @@ def main(args):
 
         # Saving the model (based on datetime)
         if args.train and trial_no != 0 and (trial_no + 1) % args.save_interval == 0:
-            torch.save(dqn.qnetwork_local.state_dict(), os.path.join("pretrained", "{date}-weights.pt".format(date=str(datetime.datetime.now()))))
-    torch.save(dqn.qnetwork_local.state_dict(), os.path.join("pretrained", "{date}-weights.pt".format(date=str(datetime.datetime.now()))))
+            torch.save(dqn.qnetwork_local.state_dict(), os.path.join("pretrained",
+                                                                     "{agent}agent-{trials}trials-{accuracy}-weights-{date}.pt".format(
+                                                                         agent=args.num_agents,
+                                                                         trials=trial_no+1,
+                                                                         accuracy=done_agents_metrics[-1],
+                                                                         date=str(datetime.datetime.now())
+                                                                     )))
+    torch.save(dqn.qnetwork_local.state_dict(), os.path.join("pretrained",
+                                                             "{agent}agent-{trials}trials-{accuracy}-weights-{date}.pt".format(
+                                                                     agent=args.num_agents,
+                                                                     trials=args.num_trials,
+                                                                     accuracy=done_agents_metrics[-1],
+                                                                     date=str(datetime.datetime.now())
+                                                                     )))
 
     return mean_rewards_metrics, mean_norm_reward_metrics, done_agents_metrics, epsilons
 
 
-if __name__ == '__main__':
+def render_frames(num_agents, width, height, pretrained_path):
     from parser import args
     args.plot = True
-    args.train = True
-    args.num_agents = 1
-    args.num_trials = 10
+    args.train = False
+    args.load_model = pretrained_path
+    args.num_agents = num_agents
+    args.width = width
+    args.height = height
+    args.num_trials = 1
+    args.render = True
 
     # Printing Initial Parameters
     params = "Parameters"
@@ -392,7 +395,40 @@ if __name__ == '__main__':
 
     # Plotting Metrics
     if args.plot:
-        plot_metric(x=[i for i in range(args.num_trials)], y=mean_rewards_metrics, title="Mean Rewards")
-        plot_metric(x=[i for i in range(args.num_trials)], y=mean_norm_reward_metrics, title="Mean Normalised Rewards")
-        plot_metric(x=[i for i in range(args.num_trials)], y=done_agents_metrics, title="Done Agents")
-        plot_metric(x=[i for i in range(args.num_trials)], y=epsilons, title="Epsilon")
+        plot_metric(x=[i for i in range(args.num_trials)], y=mean_rewards_metrics,
+                    title="Mean Rewards-{}".format(str(datetime.datetime.now())))
+        plot_metric(x=[i for i in range(args.num_trials)], y=mean_norm_reward_metrics,
+                    title="Mean Normalised Rewards-{}".format(str(datetime.datetime.now())))
+        plot_metric(x=[i for i in range(args.num_trials)], y=done_agents_metrics,
+                    title="Done Agents-{}".format(str(datetime.datetime.now())))
+        plot_metric(x=[i for i in range(args.num_trials)], y=epsilons,
+                    title="Epsilon-{}".format(str(datetime.datetime.now())))
+
+
+if __name__ == '__main__':
+    from parser import args
+    args.plot = True
+    args.train = True
+    args.num_agents = 2
+    args.num_trials = 1000
+
+    # Printing Initial Parameters
+    params = "Parameters"
+    for k, v in vars(args).items():
+        params += '\n{parameter}: {value}'.format(parameter=k, value=v)
+    print(params)
+
+    # Where to save models and plots
+    if not os.path.exists("pretrained"):
+        os.makedirs("pretrained")
+    if not os.path.exists('plots'):
+        os.makedirs('plots')
+
+    mean_rewards_metrics, mean_norm_reward_metrics, done_agents_metrics, epsilons = main(args)
+
+    # Plotting Metrics
+    if args.plot:
+        plot_metric(x=[i for i in range(args.num_trials)], y=mean_rewards_metrics, title="Mean Rewards-{}".format(str(datetime.datetime.now())))
+        plot_metric(x=[i for i in range(args.num_trials)], y=mean_norm_reward_metrics, title="Mean Normalised Rewards-{}".format(str(datetime.datetime.now())))
+        plot_metric(x=[i for i in range(args.num_trials)], y=done_agents_metrics, title="Done Agents-{}".format(str(datetime.datetime.now())))
+        plot_metric(x=[i for i in range(args.num_trials)], y=epsilons, title="Epsilon-{}".format(str(datetime.datetime.now())))

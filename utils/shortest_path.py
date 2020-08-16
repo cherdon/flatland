@@ -9,6 +9,7 @@ from flatland.envs.rail_env_shortest_paths import get_valid_move_actions_
 from utils.types import WalkingElement
 
 
+# Gotten from Flatlands GitLab Repo
 def get_shortest_paths(distance_map: DistanceMap, max_depth: Optional[int] = None, agent_handle: Optional[int] = None,
         position: Optional[Tuple[int, int]] = None, direction: Optional[int] = None) -> Dict[int, Optional[List[WalkingElement]]]:
     """
@@ -69,8 +70,7 @@ def get_shortest_paths(distance_map: DistanceMap, max_depth: Optional[int] = Non
                 WalkingElement(a_position, a_direction, best_next_action))
             depth += 1
 
-            # if there is no way to continue, the rail must be disconnected!
-            # (or distance map is incorrect)
+            # if there is no way to continue, the rail must be disconnected
             if best_next_action is None:
                 shortest_paths[agent.handle] = None
                 return
@@ -90,7 +90,8 @@ def get_shortest_paths(distance_map: DistanceMap, max_depth: Optional[int] = Non
 
     return shortest_paths
 
-def get_altpaths(handle, distance_map, max_depth, cell_to_id_node): # TODO max_depth
+
+def get_altpaths(handle, distance_map, max_depth, cell_to_id_node):
     agent = distance_map.agents[handle]
 
     if agent.status == RailAgentStatus.READY_TO_DEPART:
@@ -99,7 +100,7 @@ def get_altpaths(handle, distance_map, max_depth, cell_to_id_node): # TODO max_d
         position = agent.position
     elif agent.status == RailAgentStatus.DONE:
         position = agent.target
-    else: #Agent arrived
+    else:
         return []
 
     direction = agent.direction
@@ -112,7 +113,7 @@ def get_altpaths(handle, distance_map, max_depth, cell_to_id_node): # TODO max_d
         next_actions = get_valid_move_actions_(
             a_dir, a_pos, distance_map.rail)
 
-        if a_pos in cell_to_id_node: # if this is a switch, recursive case
+        if a_pos in cell_to_id_node:
             paths = []
             for action in next_actions:
                 first_step = WalkingElement(a_pos, a_dir,
@@ -122,7 +123,7 @@ def get_altpaths(handle, distance_map, max_depth, cell_to_id_node): # TODO max_d
                 for path in recursive_altpaths:
                     paths.append([first_step] + path)
             return paths
-        else: #Move Forward, I'm on a rail
+        else:
             assert len(next_actions) == 1
             
             # get shortest path

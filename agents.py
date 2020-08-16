@@ -76,28 +76,21 @@ class DQNAgent:
     """Interacts with and learns from the environment."""
 
     def __init__(self, args, action_space, bitmap_height, device, double_dqn=True):
-        """Initialize an Agent object.
-
-        Params
-        ======
-            state_size (int): dimension of each state
-            action_space (int): dimension of each action
-        """
         self.args = args
-        # self.state_size = state_size # used by the network, not the algorithm
-        self.width = args.prediction_depth + 1  # Bitmap width
-        self.height = bitmap_height  # num altmaps (3) x max num rails
-        self.action_space = action_space
+        self.width = args.prediction_depth + 1
+        self.height = bitmap_height                         # MAX_RAILS * 3
+        self.action_space = action_space                    # 2, for the 2 possible movements (move, dont move)
         self.double_dqn = double_dqn
+
         # Q-Network
         self.qnetwork_local = Dueling_DQN(self.width, self.height, action_space).to(device)
         self.qnetwork_target = copy.deepcopy(self.qnetwork_local)
-
+        # Optimiser used
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.args.lr)
 
         # Replay memory
-        self.memory = ReplayBuffer(action_space, self.args.buffer_size, self.args.batch_size, self.width, self.height)
-        # Initialize time step (for updating every UPDATE_EVERY steps)
+        self.memory = ExperienceReplay(action_space, self.args.buffer_size, self.args.batch_size, self.width, self.height)
+        # Initialize time step
         self.t_step = 0
 
     def save(self, filename):
@@ -190,18 +183,10 @@ class DQNAgent:
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
 
-class ReplayBuffer:
-    """Fixed-size buffer to store experience tuples."""
+# Storing tuples experience for training
+class ExperienceReplay:
 
     def __init__(self, action_space, buffer_size, batch_size, width, height):
-        """Initialize a ReplayBuffer object.
-
-        Params
-        ======
-            action_space (int): dimension of each action
-            buffer_size (int): maximum size of buffer
-            batch_size (int): size of each training batch
-        """
         self.action_space = action_space
         self.memory = deque(maxlen=buffer_size)
         self.batch_size = batch_size
@@ -236,22 +221,18 @@ class ReplayBuffer:
         """Return the current size of internal memory."""
         return len(self.memory)
 
-    # This same function is used for states, actions, rewards etc, so the parameter 'states' doesn't contain states all the time
-    # and for this reason has different shapes
     def __v_stack_impr(self, states):
         """
 
         :param states: a list of states (or actions/rewards/dones), len = self.batch_size
         :return:
         """
-        if isinstance(states[0], Iterable):  # States, next_states
-            # Debug shapes
-            # for i in range(len(states)):
-            #	print(states[i].shape)
+        if isinstance(states[0], Iterable):         # States, next_states
             # States and next_states
-            np_states = np.array(states)  # (512, 1, 400, 101)
+            np_states = np.array(states)            # (512, 1, 400, 101)
             np_states = np.reshape(np_states, (len(states), 1, self.height, self.width))
-        else:  # Actions, rewards, dones
-            np_states = np.reshape(np.array(states), (len(states)))  # (512, )
+        # Actions, rewards, dones
+        else:
+            np_states = np.reshape(np.array(states), (len(states)))
 
         return np_states
